@@ -1565,10 +1565,13 @@
     </div>
 
     <p class="share-label">SHARE</p>
-    <div class="share-btns fade-up">
+    <div class="share-btns">
       <button type="button" class="share-btn" id="kakaoShareBtn">
-        <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M12 3C6.5 3 2 6.6 2 11c0 2.8 1.9 5.3 4.7 6.7-.2.7-.8 2.9-.9 3.4-.1.5.2.5.4.4.2-.1 2.9-1.9 4-2.7.6.1 1.2.1 1.8.1 5.5 0 10-3.6 10-8s-4.5-8-10-8z"/></svg>
-        카카오톡으로 공유하기
+        <svg viewBox="0 0 24 24" width="12" height="12"><path fill="currentColor" d="M12 3C6.5 3 2 6.6 2 11c0 2.8 1.9 5.3 4.7 6.7-.2.7-.8 2.9-.9 3.4-.1.5.2.5.4.4.2-.1 2.9-1.9 4-2.7 0.6.1 1.2.1 1.8.1 5.5 0 10-3.6 10-8s-4.5-8-10-8z"/></svg>
+        카카오톡 공유하기
+      </button>
+      <button type="button" class="copylink-btn" id="copyLinkBtn">
+        링크 복사하기
       </button>
     </div>
   </section>
@@ -2027,7 +2030,7 @@
     targets.forEach(function(el){ io.observe(el); });
   })();
 
-  // ===== INTRO : 영상이 끝나면(또는 SKIP 누르면) 자동으로 사라짐 =====
+  // ===== INTRO : 영상이 끝나면 바로 청첩장으로 전환 =====
   (function(){
     var intro = document.getElementById('introScreen');
     var video = document.getElementById('introVideo');
@@ -2035,9 +2038,12 @@
     if (!intro) return;
 
     var dismissed = false;
+    var introTimer = null;
+
     function dismissIntro(){
       if (dismissed) return;
       dismissed = true;
+      if (introTimer) clearTimeout(introTimer);
       intro.classList.add('intro-hide');
       document.documentElement.classList.remove('intro-lock');
       document.body.classList.remove('intro-lock');
@@ -2046,17 +2052,39 @@
       }, 850);
     }
 
+    function armIntroTimer(){
+      if (!video || !isFinite(video.duration) || video.duration <= 0) return;
+      if (introTimer) clearTimeout(introTimer);
+      // 현재 영상은 8.7초 / playbackRate 1.5 기준 약 5.8초.
+      // ended 이벤트가 iOS에서 누락되어도 영상이 끝나는 시점에 맞춰 바로 전환한다.
+      var ms = Math.ceil((video.duration / (video.playbackRate || 1)) * 1000) + 250;
+      introTimer = setTimeout(dismissIntro, ms);
+    }
+
     if (video){
       video.playbackRate = 1.5;
       video.addEventListener('ended', dismissIntro);
-      // 페이지 로드 즉시 재생 (대기 화면 없음)
+      video.addEventListener('timeupdate', function(){
+        if (isFinite(video.duration) && video.duration > 0 && video.currentTime >= video.duration - 0.08){
+          dismissIntro();
+        }
+      });
+      video.addEventListener('loadedmetadata', armIntroTimer, { once: true });
+      video.addEventListener('durationchange', armIntroTimer);
+      video.addEventListener('canplay', function(){
+        video.play().catch(function(){});
+        armIntroTimer();
+      }, { once: true });
       video.play().catch(function(){});
+      armIntroTimer();
     }
+
     if (skipBtn){
       skipBtn.addEventListener('click', dismissIntro);
     }
-    // 혹시 영상 로딩이 안 되는 극단적 상황을 대비한 최대 대기시간
-    setTimeout(dismissIntro, 13000);
+
+    // 재생 자체가 막힌 브라우저에서도 무한히 인트로에 갇히지 않도록 최종 안전장치
+    setTimeout(dismissIntro, 9500);
   })();
 
   // ===== 확대(줌) 방지 : iOS는 meta viewport만으로 안 막혀서 JS로 보강 =====
